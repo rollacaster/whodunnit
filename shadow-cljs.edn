@@ -1,0 +1,15 @@
+;; shadow-cljs configuration
+{:nrepl {:port 9200}
+ :dev-http {9201 "resources/public"}
+ :source-paths
+ ["src"]
+
+ :dependencies
+ []
+
+ :builds
+ {:app {:target :browser
+        :output-dir "resources/public/js"
+        :asset-path "/js"
+        :compiler-options {:output-feature-set :es-next}
+        :modules {:main {:entries [tech.thomas-sojka.whodunnit.app]}}}}}
