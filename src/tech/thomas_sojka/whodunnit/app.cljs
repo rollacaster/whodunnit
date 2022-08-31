@@ -34,34 +34,45 @@
 (defn format-date [date]
   ((.-format date-fns) date "dd.MM.yyyy"))
 
-(def user (r/atom {:name "Livi"}))
+(defonce user (r/atom nil))
 
+(defonce user-sync
+  (auth/onAuthStateChanged auth
+                           (fn [firebase-user]
+                             (js/console.log "Change" firebase-user)
+                             (reset! user
+                                     (if firebase-user
+                                       {:displayName (.-displayName firebase-user)
+                                        :uid (.-uid firebase-user)
+                                        :email (.-email firebase-user)
+                                        :photoURL (.-photoURL firebase-user)}
+                                       nil)))))
 (def history
   (r/atom
    [{:date (new js/Date 2022 7 30)
-     :userId "Kirstin"
+     :uid "Kirstin"
      :status :watering}
     {:date (new js/Date 2022 7 29)
-     :userId "Livi"
+     :uid "Livi"
      :status :watering}
     {:date (new js/Date 2022 7 31)
-     :userId "Livi"
+     :uid "Livi"
      :status :rain}]))
 
 (def today (new js/Date))
 
 (defn compute-state [history]
   (reduce
-   (fn [state {:keys [userId status]}]
+   (fn [state {:keys [uid status]}]
      (case status
        :watering (-> state
                      (assoc :state :watering
-                            :userId userId))
+                            :uid uid))
        :reject (-> state
                    (assoc :state :dry))
        :rain (-> state
                  (assoc :state :rain
-                        :userId userId))))
+                        :uid uid))))
    {:state :dry
     :date today}
    (->> history
@@ -99,6 +110,21 @@
     [icons/icon :rain]]
    [:div.text-2xl.text-center.text-blue-400 "Es soll regnen"]])
 
+(defn- login-form []
+  [:form.w-full {:on-submit (fn [e]
+                              (.preventDefault e)
+                              (auth/signInWithEmailAndPassword
+                               auth
+                               ^js (.-target.elements.email.value e)
+                               ^js (.-target.elements.password.value e)))}
+   [:div.pb-2
+    [:label.w-20.inline-block {:for "email"} "Email"]
+    [:input {:name "email"}]]
+   [:div.pb-2
+    [:label.w-20.inline-block {:for "password"} "Passwort"]
+    [:input {:type "password" :name "password"}]]
+   [:button.bg-green-300.py-1.px-2.text-white.shadow-4.rounded "Login"]])
+
 (defn main []
   (let [{:keys [state date]} (compute-state @history)]
     [:div
@@ -107,25 +133,29 @@
        [:div.mx-auto.max-w-5xl.py-4.px-4
         [:h1.text-white.text-3xl.font-bold "Whodunnit?"]]]
       [:section.flex-col.flex.items-center.pt-8.max-w-5xl.mx-auto.px-4
-       [:div.text-4xl.pb-16.text-gray-700 (format-date date)]
-       [current-state {:state state}]
-       [:div.flex.justify-between.w-full.pb-16
-        [watering-button {:state state :on-click #(swap! history conj {:status :watering :date today :userId (:name @user)})}]
-        [rain-button {:state state :on-click #(swap! history conj {:status :rain :date today :userId (:name @user)})}]]
-       [:div.w-full
-        [:h2.text-2xl.text-gray-700.pb-3 "Historie"]
-        [:ul
-         (->> @history
-              (sort-by :date >)
-              (map
-               (fn [{:keys [date userId status]}]
-                 ^{:key [date status]}
-                 [:li.flex
-                  [:span {:class "w-1/5"} userId]
-                  [:span {:class "w-2/5"} (format-date date)]
-                  [:span {:class "w-2/5"}
-                   (case status
-                     :watering "Gegoßen"
-                     :rain "Regen")]])))]]]]]))
+       (if @user
+         [:<>
+          [:div.text-4xl.pb-16.text-gray-700 (format-date date)]
+          [current-state {:state state}]
+          [:div.flex.justify-between.w-full.pb-16
+           [watering-button {:state state :on-click #(swap! history conj {:status :watering :date today :uid (:uid @user)})}]
+           [rain-button {:state state :on-click #(swap! history conj {:status :rain :date today :uid (:uid @user)})}]]
+          [:div.w-full
+           [:h2.text-2xl.text-gray-700.pb-3 "Historie"]
+           [:ul
+            (->> @history
+                 (sort-by :date >)
+                 (map
+                  (fn [{:keys [date uid status]}]
+                    ^{:key [date status]}
+                    [:li.flex
+                     [:span.text-ellipsis.overflow-hidden {:class "w-1/5"}
+                      uid]
+                     [:span {:class "w-2/5"} (format-date date)]
+                     [:span {:class "w-2/5"}
+                      (case status
+                        :watering "Gegoßen"
+                        :rain "Regen")]])))]]]
+         [login-form])]]]))
 
 (dom/render [main] (js/document.getElementById "app"))
