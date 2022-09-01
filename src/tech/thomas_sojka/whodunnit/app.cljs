@@ -23,14 +23,15 @@
 
 (def auth (auth/getAuth app))
 
-(comment
-  (auth/signOut auth))
-
 (defn format-date [date]
   ((.-format date-fns) date "dd.MM.yyyy"))
 
 (defonce user (r/atom nil))
-
+(comment
+  (firestore/addDoc (firestore/collection db "users")
+                    (clj->js {:uid (:uid @user) :displayName (:displayName @user)}))
+  (auth/signInWithEmailAndPassword auth "thsojka@web.de" "test123")
+  (auth/signOut auth))
 (defonce user-sync
   (auth/onAuthStateChanged auth
                            (fn [firebase-user]
@@ -41,20 +42,13 @@
                                         :email (.-email firebase-user)
                                         :photoURL (.-photoURL firebase-user)}
                                        nil)))))
-(def history
-  (r/atom []
-   #_[{:date (new js/Date 2022 7 30)
-     :uid "Kirsten"
-     :status :watering}
-    {:date (new js/Date 2022 7 29)
-     :uid "Livi"
-     :status :watering}
-    {:date (new js/Date 2022 7 31)
-     :uid "Livi"
-     :status :rain}]))
+(defn user-name [user] (or (:displayName user) (:uid user)))
+(def history (r/atom []))
+(def users (r/atom []))
 
 (def today (new js/Date))
 (def history-of-last-10-days (firestore/query (firestore/collection db "history") (firestore/where "date" ">=" (date-fns/subDays today 10))))
+(def all-users (firestore/query (firestore/collection db "users")))
 
 (defn compute-state [history]
   (reduce
@@ -130,7 +124,7 @@
          [:div.text-red-400 "Password oder Email falsch"])])))
 
 (defn protected []
-  (let [unsubscribe
+  (let [unsubscribe-history
         (firestore/onSnapshot
          history-of-last-10-days
          (fn [snapshot]
@@ -142,10 +136,20 @@
                                                            (js->clj :keywordize-keys true)
                                                            (update :date (fn [date] (.toDate date)))
                                                            (update :status keyword)))))
-             (reset! history @history-snapshot))))]
+             (reset! history @history-snapshot))))
+        unsubscribe-users
+        (firestore/onSnapshot
+         all-users
+         (fn [snapshot]
+           (let [users-snapshot (volatile! [])]
+             (.forEach snapshot
+                       (fn [doc]
+                         (vswap! users-snapshot conj (js->clj (.data doc) :keywordize-keys true))))
+             (reset! users (update-vals (group-by :uid @users-snapshot) first)))))]
     (r/create-class
      {:display-name "main"
-      :component-will-unmount unsubscribe
+      :component-will-unmount #(do (unsubscribe-history)
+                                   (unsubscribe-users))
       :reagent-render (fn []
                         (let [{:keys [state date]} (compute-state @history)]
                           [:<>
@@ -161,19 +165,20 @@
                            [:div.w-full
                             [:h2.text-2xl.text-gray-700.pb-3 "Historie"]
                             [:ul
-                             (->> @history
-                                  (sort-by :date >)
-                                  (map
-                                   (fn [{:keys [date uid status]}]
-                                     ^{:key [date status]}
-                                     [:li.flex
-                                      [:span.text-ellipsis.overflow-hidden {:class "w-1/5"}
-                                       uid]
-                                      [:span {:class "w-2/5"} (format-date date)]
-                                      [:span {:class "w-2/5"}
-                                       (case status
-                                         :watering "Gegoßen"
-                                         :rain "Regen")]])))]]]))})))
+                             (doall
+                              (->> @history
+                                   (sort-by :date >)
+                                   (map
+                                    (fn [{:keys [date uid status]}]
+                                      ^{:key [date status]}
+                                      [:li.flex
+                                       [:span.text-ellipsis.overflow-hidden {:class "w-1/5"}
+                                        (user-name (get @users uid))]
+                                       [:span {:class "w-2/5"} (format-date date)]
+                                       [:span {:class "w-2/5"}
+                                        (case status
+                                          :watering "Gegoßen"
+                                          :rain "Regen")]]))))]]]))})))
 
 (defn main []
   [:div
