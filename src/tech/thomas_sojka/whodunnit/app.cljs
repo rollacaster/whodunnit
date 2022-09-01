@@ -1,5 +1,6 @@
 (ns tech.thomas-sojka.whodunnit.app
   (:require ["date-fns" :as date-fns]
+            ["date-fns/locale" :refer [de]]
             ["firebase/app" :as firebase]
             ["firebase/auth" :as auth]
             ["firebase/firestore" :as firestore]
@@ -24,7 +25,7 @@
 (def auth (auth/getAuth app))
 
 (defn format-date [date]
-  ((.-format date-fns) date "dd.MM.yyyy"))
+  ((.-format date-fns) date "EEEEEE, dd.MM.yyyy" #js {:locale de}))
 
 (defonce user (r/atom nil))
 (comment
