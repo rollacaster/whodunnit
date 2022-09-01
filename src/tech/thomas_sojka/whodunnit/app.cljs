@@ -65,7 +65,8 @@
    {:state :dry
     :date today}
    (->> history
-        (filter (fn [{:keys [date]}] (date-fns/isSameDay date today))))))
+        (filter (fn [{:keys [date]}] (date-fns/isSameDay date today)))
+        (sort-by :date <))))
 
 (defn- current-state [{:keys [state]}]
   [:div.flex.flex-col.items-center.pb-16
@@ -84,8 +85,8 @@
             [:div.text-2xl.text-center.text-blue-400 "Es soll regnen"]])])
 
 (defn- watering-button [{:keys [state on-click]}]
-  [:button {:class [(when (not= state :dry) "opacity-25")]
-            :disabled (not= state :dry)
+  [:button {:class [(when (#{:dry :watering} state) "opacity-25")]
+            :disabled (#{:dry :watering} state)
             :on-click on-click}
    [:div.w-32.text-green-300
     [icons/icon :check]]
