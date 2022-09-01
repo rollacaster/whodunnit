@@ -85,8 +85,8 @@
             [:div.text-2xl.text-center.text-blue-400 "Es soll regnen"]])])
 
 (defn- watering-button [{:keys [state on-click]}]
-  [:button {:class [(when (#{:dry :watering} state) "opacity-25")]
-            :disabled (#{:dry :watering} state)
+  [:button {:class [(when (#{:rain :watering} state) "opacity-25")]
+            :disabled (#{:rain :watering} state)
             :on-click on-click}
    [:div.w-32.text-green-300
     [icons/icon :check]]
@@ -116,10 +116,10 @@
                                                   (throw err))))))}
        [:div.pb-2
         [:label.w-20.inline-block {:for "email"} "Email"]
-        [:input.py-1.px-2.rounded {:name "email"}]]
+        [:input.py-1.px-2.rounded.bg-white {:name "email"}]]
        [:div.pb-2
-        [:label.w-20.inline-block {:for "password"} "Passwort"]
-        [:input.py-1.px-2.rounded {:type "password" :name "password"}]]
+        [:label.w-20.inline-block {:for "password" :autocomplete "current-password"} "Passwort"]
+        [:input.py-1.px-2.rounded.bg-white {:type "password" :name "password"}]]
        [:button.bg-green-300.py-1.px-2.text-white.shadow-4.rounded.mb-2 "Login"]
        (when (= @error "auth/invalid-email")
          [:div.text-red-400 "Password oder Email falsch"])])))
@@ -178,7 +178,7 @@
                                        [:span {:class "w-2/5"} (format-date date)]
                                        [:span {:class "w-2/5"}
                                         (case status
-                                          :watering "Gegoßen"
+                                          :watering "Gegossen"
                                           :rain "Regen")]]))))]]]))})))
 
 (defn main []
