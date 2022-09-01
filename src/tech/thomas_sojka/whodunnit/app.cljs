@@ -24,11 +24,6 @@
 (def auth (auth/getAuth app))
 
 (comment
-  (auth/onAuthStateChanged auth (fn [user] (when user (prn (.-uid user)))))
-  (auth/signInWithEmailAndPassword auth "thsojka@web.de" "test123")
-  (-> (firestore/getDocs (firestore/collection db "test"))
-      (.then (fn [snapshot] (.forEach snapshot #(-> % .data js/console.log)))))
-  #_(auth/createUserWithEmailAndPassword auth "thsojka@web.de" "test123")
   (auth/signOut auth))
 
 (defn format-date [date]
@@ -39,7 +34,6 @@
 (defonce user-sync
   (auth/onAuthStateChanged auth
                            (fn [firebase-user]
-                             (js/console.log "Change" firebase-user)
                              (reset! user
                                      (if firebase-user
                                        {:displayName (.-displayName firebase-user)
@@ -48,9 +42,9 @@
                                         :photoURL (.-photoURL firebase-user)}
                                        nil)))))
 (def history
-  (r/atom
-   [{:date (new js/Date 2022 7 30)
-     :uid "Kirstin"
+  (r/atom []
+   #_[{:date (new js/Date 2022 7 30)
+     :uid "Kirsten"
      :status :watering}
     {:date (new js/Date 2022 7 29)
      :uid "Livi"
@@ -60,6 +54,7 @@
      :status :rain}]))
 
 (def today (new js/Date))
+(def history-of-last-10-days (firestore/query (firestore/collection db "history") (firestore/where "date" ">=" (date-fns/subDays today 10))))
 
 (defn compute-state [history]
   (reduce
@@ -111,51 +106,84 @@
    [:div.text-2xl.text-center.text-blue-400 "Es soll regnen"]])
 
 (defn- login-form []
-  [:form.w-full {:on-submit (fn [e]
-                              (.preventDefault e)
-                              (auth/signInWithEmailAndPassword
-                               auth
-                               ^js (.-target.elements.email.value e)
-                               ^js (.-target.elements.password.value e)))}
-   [:div.pb-2
-    [:label.w-20.inline-block {:for "email"} "Email"]
-    [:input {:name "email"}]]
-   [:div.pb-2
-    [:label.w-20.inline-block {:for "password"} "Passwort"]
-    [:input {:type "password" :name "password"}]]
-   [:button.bg-green-300.py-1.px-2.text-white.shadow-4.rounded "Login"]])
+  (let [error (r/atom nil)]
+    (fn []
+      [:form.w-full {:on-submit (fn [e]
+                                  (.preventDefault e)
+                                  (-> (auth/signInWithEmailAndPassword
+                                       auth
+                                       ^js (.-target.elements.email.value e)
+                                       ^js (.-target.elements.password.value e))
+                                      (.then (fn [] (reset! error nil)))
+                                      (.catch (fn [err]
+                                                (if (= (.-code err) "auth/invalid-email")
+                                                  (reset! error "auth/invalid-email")
+                                                  (throw err))))))}
+       [:div.pb-2
+        [:label.w-20.inline-block {:for "email"} "Email"]
+        [:input.py-1.px-2.rounded {:name "email"}]]
+       [:div.pb-2
+        [:label.w-20.inline-block {:for "password"} "Passwort"]
+        [:input.py-1.px-2.rounded {:type "password" :name "password"}]]
+       [:button.bg-green-300.py-1.px-2.text-white.shadow-4.rounded.mb-2 "Login"]
+       (when (= @error "auth/invalid-email")
+         [:div.text-red-400 "Password oder Email falsch"])])))
+
+(defn protected []
+  (let [unsubscribe
+        (firestore/onSnapshot
+         history-of-last-10-days
+         (fn [snapshot]
+           (let [history-snapshot (volatile! [])]
+             (.forEach snapshot
+                       (fn [doc]
+                         (vswap! history-snapshot conj (-> doc
+                                                           .data
+                                                           (js->clj :keywordize-keys true)
+                                                           (update :date (fn [date] (.toDate date)))
+                                                           (update :status keyword)))))
+             (reset! history @history-snapshot))))]
+    (r/create-class
+     {:display-name "main"
+      :component-will-unmount unsubscribe
+      :reagent-render (fn []
+                        (let [{:keys [state date]} (compute-state @history)]
+                          [:<>
+                           [:div.text-4xl.pb-16.text-gray-700 (format-date date)]
+                           [current-state {:state state}]
+                           [:div.flex.justify-between.w-full.pb-16
+                            [watering-button {:state state
+                                              :on-click #(firestore/addDoc (firestore/collection db "history")
+                                                                           (clj->js {:status :watering :date today :uid (:uid @user)}))}]
+                            [rain-button {:state state
+                                          :on-click #(firestore/addDoc (firestore/collection db "history")
+                                                                       (clj->js {:status :rain :date today :uid (:uid @user)}))}]]
+                           [:div.w-full
+                            [:h2.text-2xl.text-gray-700.pb-3 "Historie"]
+                            [:ul
+                             (->> @history
+                                  (sort-by :date >)
+                                  (map
+                                   (fn [{:keys [date uid status]}]
+                                     ^{:key [date status]}
+                                     [:li.flex
+                                      [:span.text-ellipsis.overflow-hidden {:class "w-1/5"}
+                                       uid]
+                                      [:span {:class "w-2/5"} (format-date date)]
+                                      [:span {:class "w-2/5"}
+                                       (case status
+                                         :watering "Gegoßen"
+                                         :rain "Regen")]])))]]]))})))
 
 (defn main []
-  (let [{:keys [state date]} (compute-state @history)]
-    [:div
-     [:main
-      [:header.bg-green-400
-       [:div.mx-auto.max-w-5xl.py-4.px-4
-        [:h1.text-white.text-3xl.font-bold "Whodunnit?"]]]
-      [:section.flex-col.flex.items-center.pt-8.max-w-5xl.mx-auto.px-4
-       (if @user
-         [:<>
-          [:div.text-4xl.pb-16.text-gray-700 (format-date date)]
-          [current-state {:state state}]
-          [:div.flex.justify-between.w-full.pb-16
-           [watering-button {:state state :on-click #(swap! history conj {:status :watering :date today :uid (:uid @user)})}]
-           [rain-button {:state state :on-click #(swap! history conj {:status :rain :date today :uid (:uid @user)})}]]
-          [:div.w-full
-           [:h2.text-2xl.text-gray-700.pb-3 "Historie"]
-           [:ul
-            (->> @history
-                 (sort-by :date >)
-                 (map
-                  (fn [{:keys [date uid status]}]
-                    ^{:key [date status]}
-                    [:li.flex
-                     [:span.text-ellipsis.overflow-hidden {:class "w-1/5"}
-                      uid]
-                     [:span {:class "w-2/5"} (format-date date)]
-                     [:span {:class "w-2/5"}
-                      (case status
-                        :watering "Gegoßen"
-                        :rain "Regen")]])))]]]
-         [login-form])]]]))
+  [:div
+   [:main
+    [:header.bg-green-400
+     [:div.mx-auto.max-w-5xl.py-4.px-4
+      [:h1.text-white.text-3xl.font-bold "Whodunnit?"]]]
+    [:section.flex-col.flex.items-center.pt-8.max-w-5xl.mx-auto.px-4
+     (if @user
+       [protected]
+       [login-form])]]])
 
 (dom/render [main] (js/document.getElementById "app"))
