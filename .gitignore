@@ -2,5 +2,7 @@
 /.lsp/
 /.shadow-cljs/
 /node_modules/
-/resources/public/js
-/resources/public/css
+/public/js
+/public/css
+
+.vercel
