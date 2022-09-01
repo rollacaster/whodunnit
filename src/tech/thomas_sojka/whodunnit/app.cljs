@@ -116,10 +116,10 @@
                                                   (throw err))))))}
        [:div.pb-2
         [:label.w-20.inline-block {:for "email"} "Email"]
-        [:input.py-1.px-2.rounded.bg-white {:name "email"}]]
+        [:input.py-1.px-2.rounded.bg-white {:name "email" :autoComplete "username"}]]
        [:div.pb-2
-        [:label.w-20.inline-block {:for "password" :autocomplete "current-password"} "Passwort"]
-        [:input.py-1.px-2.rounded.bg-white {:type "password" :name "password"}]]
+        [:label.w-20.inline-block {:for "password"} "Passwort"]
+        [:input.py-1.px-2.rounded.bg-white {:type "password" :name "password" :autoComplete "current-password"}]]
        [:button.bg-green-300.py-1.px-2.text-white.shadow-4.rounded.mb-2 "Login"]
        (when (= @error "auth/invalid-email")
          [:div.text-red-400 "Password oder Email falsch"])])))
